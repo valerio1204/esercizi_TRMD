@@ -1,2 +1,2 @@
-[nix]
-channel = "stable-24_05"
+language = "bash"
+run = "/bin/bash"
