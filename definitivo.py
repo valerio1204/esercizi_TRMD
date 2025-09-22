@@ -1,16 +1,3 @@
-"""
-Fit dei nuovi contagi usando emcee campionando direttamente N (N_tot).
-- Modello: Logistica e Gompertz cumulativa, t0 fissato (giorno 0 = 24 febbraio)
-- Dati: dal 24 febbraio al 30 marzo per il fit (35 giorni)
-- Previsione: confronto con i primi 100 giorni dall'inizio (24 febbraio)
-- Priors:
-    N ~ Uniform(Nmin, Nmax)
-    k ~ Uniform(kmin, kmax)
-- Output:
-    * Stima dei parametri (mediana + intervallo credibile 16–84%)
-    * Confronto predizioni (100 giorni) vs osservati (100 giorni)
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -19,9 +6,6 @@ from scipy.optimize import minimize
 import emcee
 from scipy.special import gammaln
 
-# -----------------------------
-# Modelli cumulativi e utilità
-# -----------------------------
 
 # qui userò t come array di giorni (0,1,2,...) e i nuovi contagi giornalieri li ricavo come differenza tra due array con t traslato di 1
 # np mi permette di fare operazioni con array in modo vettoriale, senza dover usare loop espliciti
@@ -43,9 +27,9 @@ def daily_from_cum_func(cum_func, t, N, k, t0=0.0):  # qui tra gli argomenti com
 
 
 def poisson_loglike(mu, obs):
-    mu = np.clip(mu, 1e-12, None)  # evito valori <= 0 per i val. di aspettazione senno log(0)
-    obs = np.asarray(obs)          # assicuro che obs (ovvero i parametri liberi) sia un array numpy
-    return np.sum(obs * np.log(mu) - mu - gammaln(obs + 1.0))
+    mu = np.clip(mu, 1e-12, None)  # evito valori <= 0 per i val. di aspettazione (calcolati con il modello) senno log(0)
+    obs = np.asarray(obs)          # assicuro che obs (ovvero i dati osservati) sia un array numpy
+    return np.sum(obs * np.log(mu) - mu - gammaln(obs + 1.0))     #uso gammaln per calcolare log(factorial(obs)) in modo stabile (ricordo che gamma(x+1) è il fattoriale di x)
 
 # -----------------------------
 # Priors: N uniforme e k uniforme
@@ -79,7 +63,7 @@ def log_probability(theta, t, obs, cum_model_func, priors):           # lavoro c
     return lp + ll                                               # somma di log prior e log likelihood, quindi ho log posterior
 
 # -----------------------------
-# Fit + emcee wrapper
+# emcee
 # -----------------------------
 
 def fit_with_emcee_N(t, obs, cum_model_func, priors, nwalkers=128, nsteps=10000, discard_burnin=2000):
@@ -116,7 +100,7 @@ def fit_with_emcee_N(t, obs, cum_model_func, priors, nwalkers=128, nsteps=10000,
     return sampler, samples, x0                                       # ritorna la catena completa dei campioni (dopo aver scartato il burn-in) e il punto di partenza x0
 
 # -----------------------------
-# Posterior predictive
+# Fascia di confidenza e riepilogo parametri
 # -----------------------------
 
 # qui ricavo l'incertezza lavorando sui modelli che si ricavano dai vari samples dei parametri, qui uso n_samples sul totale dei samples per non appesantire troppo i calcoli
@@ -135,9 +119,6 @@ def posterior_predictive(samples, t_pred, cum_model_func, n_samples=5000):
     high = np.percentile(preds, 84, axis=0)
     return med, low, high, preds
 
-# -----------------------------
-# Utility: stampa riassunto parametri
-# -----------------------------
 def summarize_parameters(samples, names=['N','k']):
     med = np.median(samples, axis=0)                            # <-- l'asse 0 corrisponde ai samples dei parametri N e k raggruppati come array di dim 2
     low = np.percentile(samples, 16, axis=0)                    # lungo l'asse 0 che è lunga nwalkers*nsteps
@@ -250,9 +231,9 @@ def plot_walkers(sampler, model_name='model', burn=0):
     param_names = ['N', 'k']
 
     # Trace plot
-    fig, axes = plt.subplots(ndim, 1, figsize=(10, 2.5*ndim), sharex=True)
+    fig, axes = plt.subplots(ndim, 1, figsize=(10, 2.5*ndim), sharex=True)         # traccia due subplots (uno per ogni parametro) con asse x condiviso
     for i in range(ndim):
-        ax = axes[i] if ndim > 1 else axes
+        ax = axes[i] if ndim > 1 else axes                                         # se ndim>1 axes è una lista cui devo accedere separatamente per i due grafici, altrimenti è un singolo asse
         ax.plot(chain[:, :, i], color='k', alpha=0.35, linewidth=0.6)
         ax.set_ylabel(param_names[i])
     axes[-1].set_xlabel('step')
@@ -261,9 +242,9 @@ def plot_walkers(sampler, model_name='model', burn=0):
 
     # Snapshots scatter (N vs k) a vari step
     steps = np.linspace(burn, nsteps-1, 6, dtype=int)  # 6 snapshot equispaziati
-    colors = plt.cm.viridis(np.linspace(0,1,len(steps)))
+    colors = plt.cm.viridis(np.linspace(0,1,len(steps)))   # colormap per colorare i vari step
     plt.figure(figsize=(8,6))
-    for s,c in zip(steps, colors):
+    for s,c in zip(steps, colors):                 # ad ogni step s associo un colore c
         pts = chain[s, :, :]
         plt.scatter(pts[:,0], pts[:,1], alpha=0.7, s=30, color=c, label=f'step {s}')
     plt.xlabel('N'); plt.ylabel('k')
